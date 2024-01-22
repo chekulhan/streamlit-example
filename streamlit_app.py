@@ -16,73 +16,61 @@ In the meantime, below is an example of what you can do with just a few lines of
 """
 
 
-client = OpenAI(api_key=st.secrets["API_KEY"])
-ASSISTANT_ID = st.secrets["ASSISTANT_ID"]
 
-assistant = client.beta.assistants.create(
-    name="KW Educación Asistente",
-    instructions="",
-    tools=[{"type": "code_interpreter"}],
+st.session_state.go = False
 
-)
 
-thread = client.beta.threads.create()
+if 'go' not in st.session_state:
+    st.session_state.go = False
 
-message = client.beta.threads.messages.create(
-    thread_id=thread.id,
-    role="user",
-    content="¿Me puedes ayudar con información sobre la ley de educación?",
+def click_action():
+    st.session_state.go = True
+
+st.write(st.session_state.go)
+
+pregunta = st.text_input('Introducir tu pregunta...', value ='¿Cómo se llama el proyecto?')
+
+st.button('Go', on_click=click_action())
+
+
+if st.session_state.go == True:
     
-)
+    client = OpenAI(api_key=st.secrets["API_KEY"])
+    
+    ASSISTANT_ID = st.secrets["ASSISTANT_ID"]
 
+    assistant = client.beta.assistants.retrieve(ASSISTANT_ID)
 
-run = client.beta.threads.runs.create(
-  thread_id=thread.id,
-  assistant_id=ASSISTANT_ID
-)
+    thread = client.beta.threads.create()
 
-st.write(run)
-
-while (run.status != "completed") or (run.failed_at == "None"):
-    st.write(f"Working... {run.status}")
-    st.write(run)
-    run = client.beta.threads.runs.retrieve(
+    message = client.beta.threads.messages.create(
         thread_id=thread.id,
-        run_id=run.id
+        role="user",
+        content=pregunta,
     )
-    sleep(8)
-
-st.write(run)
-
-messages = client.beta.threads.messages.list(
-  thread_id=thread.id
-)
 
 
-st.write(messages)
+    run = client.beta.threads.runs.create(
+    thread_id=thread.id,
+    assistant_id=assistant.id
+    )
 
-num_points = st.slider("Number of points in spiral", 1, 10000, 1100)
-num_turns = st.slider("Number of turns in spiral", 1, 300, 31)
+    while (run.status != "completed") and (run.last_error != "None"):
+        st.write(f"Esperando respuesta... {run.status}")
+        run = client.beta.threads.runs.retrieve(
+            thread_id=thread.id,
+            run_id=run.id
+        )
+        sleep(8)
 
-indices = np.linspace(0, 1, num_points)
-theta = 2 * np.pi * num_turns * indices
-radius = indices
 
-x = radius * np.cos(theta)
-y = radius * np.sin(theta)
+    messages = client.beta.threads.messages.list(
+        thread_id=thread.id
+    )
+    result = ",".join(str(e) for e in messages)
+    result = st.text_area(result)
+    
+    st.write("end")
 
-df = pd.DataFrame({
-    "x": x,
-    "y": y,
-    "idx": indices,
-    "rand": np.random.randn(num_points),
-})
-
-st.altair_chart(alt.Chart(df, height=700, width=700)
-    .mark_point(filled=True)
-    .encode(
-        x=alt.X("x", axis=None),
-        y=alt.Y("y", axis=None),
-        color=alt.Color("idx", legend=None, scale=alt.Scale()),
-        size=alt.Size("rand", legend=None, scale=alt.Scale(range=[1, 150])),
-    ))
+else:
+    st.write("Esperando pregunta...")
