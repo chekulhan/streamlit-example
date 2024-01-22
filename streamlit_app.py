@@ -5,72 +5,87 @@ import streamlit as st
 from openai import OpenAI
 
 from time import sleep
+
+
+st.image('assets/kw_small.png')
 """
-# Welcome to Streamlit!
-
-Edit `/streamlit_app.py` to customize this app to your heart's desire :heart:.
-If you have any questions, checkout our [documentation](https://docs.streamlit.io) and [community
-forums](https://discuss.streamlit.io).
-
-In the meantime, below is an example of what you can do with just a few lines of code:
+# Knowledge Works - AI 
 """
 
+client = OpenAI(api_key=st.secrets["API_KEY"])
+ASSISTANT_ID = st.secrets["ASSISTANT_ID"]
+
+if 'start_chat' not in st.session_state:
+    st.session_state.start_chat = False
+
+if 'thread_id' not in st.session_state:
+    st.session_state.thread_id = None
+
+if 'messages' not in st.session_state:
+    st.session_state.messages = []
 
 
-st.session_state.go = False
 
+#st.set_page_config(page_title="Knowledge Works demo", page_icon=":speech_balloon:")
 
-if 'go' not in st.session_state:
-    st.session_state.go = False
-
-def click_action():
-    st.session_state.go = True
-
-st.write(st.session_state.go)
-
-pregunta = st.text_input('Introducir tu pregunta...', value ='¿Cómo se llama el proyecto?')
-
-st.button('Go', on_click=click_action())
-
-
-if st.session_state.go == True:
-    
-    client = OpenAI(api_key=st.secrets["API_KEY"])
-    
-    ASSISTANT_ID = st.secrets["ASSISTANT_ID"]
-
-    assistant = client.beta.assistants.retrieve(ASSISTANT_ID)
-
+if st.sidebar.button("Empezar Chat"):
+    st.session_state.start_chat = True
     thread = client.beta.threads.create()
+    st.session_state.thread_id=thread.id
 
-    message = client.beta.threads.messages.create(
-        thread_id=thread.id,
-        role="user",
-        content=pregunta,
-    )
+if st.button("Exit Chat"):
+    st.session_state.messages=[]
+    st.session_state.start_chat = False
+    st.session_state.thread_id = None
 
-
-    run = client.beta.threads.runs.create(
-    thread_id=thread.id,
-    assistant_id=assistant.id
-    )
-
-    while (run.status != "completed") and (run.last_error != "None"):
-        st.write(f"Esperando respuesta... {run.status}")
-        run = client.beta.threads.runs.retrieve(
-            thread_id=thread.id,
-            run_id=run.id
-        )
-        sleep(8)
-
-
-    messages = client.beta.threads.messages.list(
-        thread_id=thread.id
-    )
-    result = ",".join(str(e) for e in messages)
-    result = st.text_area(result)
+if st.session_state.start_chat == True:
+    st.session_state.start_chat = True
+    if "messages" not in st.session_state.messages:
+        st.session_state.messages = []
     
-    st.write("end")
+    for message in st.session_state.messages:
+        with st.chat_input(message["role"]):
+            st.markdown(message["content"])
+    
+    if prompt:=st.chat_input("Pregunta...?"):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
 
+        assistant = client.beta.assistants.retrieve(ASSISTANT_ID)
+
+        message = client.beta.threads.messages.create(
+            thread_id=st.session_state.thread_id,
+            role="user",
+            content=prompt,
+        )
+
+        run = client.beta.threads.runs.create(
+            thread_id=st.session_state.thread_id,
+            assistant_id=assistant.id
+        )
+
+        while (run.status != "completed"):
+            st.write(f"Esperando respuesta... {run.status}")
+            run = client.beta.threads.runs.retrieve(
+                thread_id=st.session_state.thread_id,
+                run_id=run.id
+            )
+            sleep(8)
+
+        messages = client.beta.threads.messages.list(
+            thread_id=st.session_state.thread_id)
+        
+        assistant_messages=[
+            message for message in messages
+            if message.run_id== run.id and message.role=="assistant"
+        ]
+        for message in assistant_messages:
+            st.session_state.messages.append({"role":"assistant", "content":message.content[0].text.value})
+            with st.chat_message("assistant"):
+                st.markdown(message.content[0].text.value)
 else:
-    st.write("Esperando pregunta...")
+    st.write("Pinchar 'Empezar Chat' para comenzar")
+
+
+    
